@@ -189,11 +189,8 @@ def create_app(config: Config, client) -> Flask:
     def device(code):
         try:
             appliances_list = client.list_appliances()
-        except Exception as e:
+        except Exception:
             appliances_list = None
-            list_error = str(e)
-        else:
-            list_error = None
 
         if appliances_list is not None:
             known = {a["applianceCode"] for a in appliances_list}
@@ -213,17 +210,16 @@ def create_app(config: Config, client) -> Flask:
         return render_template(
             "device.html",
             code=code,
-            name=(metadata["value"] or {}).get("name") if metadata["value"] else None,
+            name=metadata["value"].get("name") if metadata["value"] else None,
             metadata={"rows": meta_rows, "error": metadata["error"]},
             status=status_obj,
             sensors=sensors_obj,
             updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            list_error=list_error,
         )
 
     @app.route("/device/<code>/raw")
     @require_auth
     def device_raw(code):
-        return f"raw {code} placeholder"
+        return f"raw {code} placeholder", 200, {"Content-Type": "text/plain"}
 
     return app

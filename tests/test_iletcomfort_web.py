@@ -257,9 +257,6 @@ def test_appliances_empty_list_renders_message(client, mock_client):
     assert b"no appliances" in resp.data.lower()
 
 
-from unittest.mock import call
-
-
 def _short_status():
     from iletcomfort_client import ITSStatus
 
