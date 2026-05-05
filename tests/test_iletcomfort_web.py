@@ -401,3 +401,12 @@ def test_device_raw_renders_hex_dump(client, mock_client):
     assert "01 64 17 90" in body  # status raw bytes (first four)
     assert "Raw status frame" in body
     assert "Raw sensor frame" in body
+
+
+def test_appliances_list_failure_renders_inline_error(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.side_effect = Exception("network down")
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"network down" in resp.data
+    assert b"Could not load appliances" in resp.data

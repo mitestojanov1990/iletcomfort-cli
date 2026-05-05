@@ -2,6 +2,7 @@
 {% block title %}Appliances — iLetComfort{% endblock %}
 {% block content %}
   <h1>Appliances</h1>
+  {% if error %}<p class="err">Could not load appliances: {{ error }}</p>{% endif %}
   {% if appliances %}
     <ul>
       {% for a in appliances %}

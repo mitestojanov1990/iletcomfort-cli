@@ -256,6 +256,9 @@ def main() -> None:
     home_env = Path.home() / ".iletcomfort_web.env"
     secret_path = Path.home() / ".iletcomfort_web_secret"
 
+    secret_existed_before = secret_path.exists()
+    secret_key_was_set = bool(os.environ.get("WEBUI_SECRET_KEY"))
+
     try:
         config = Config.from_env(
             env=dict(os.environ),
@@ -270,6 +273,13 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+
+    if not secret_key_was_set and not secret_existed_before:
+        print(
+            f"Warning: WEBUI_SECRET_KEY auto-generated and saved to {secret_path}. "
+            "Set WEBUI_SECRET_KEY explicitly in your environment for stability.",
+            file=sys.stderr,
+        )
 
     client = _build_runtime_client(config)
     app = create_app(config, client)
