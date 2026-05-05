@@ -194,3 +194,64 @@ def test_logout_clears_session(client):
     follow = client.get("/")
     assert follow.status_code == 302
     assert "/login" in follow.headers["Location"]
+
+
+def _login(c):
+    c.post("/login", data={"password": "secret"})
+
+
+def test_appliances_renders_two_devices(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.return_value = [
+        {
+            "applianceCode": "AAA111",
+            "name": "Living Room",
+            "applianceType": "0xC3",
+            "online": 1,
+            "owner": True,
+            "sn": "SN-A",
+            "sn8": "171H120F",
+        },
+        {
+            "applianceCode": "BBB222",
+            "name": "Cabin",
+            "applianceType": "0xC3",
+            "online": 0,
+            "owner": False,
+            "sn": "SN-B",
+            "sn8": "171000AU",
+        },
+    ]
+    resp = client.get("/")
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert "Living Room" in body
+    assert "AAA111" in body
+    assert "Cabin" in body
+    assert "BBB222" in body
+
+
+def test_appliances_redirects_when_one_device(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.return_value = [
+        {
+            "applianceCode": "ONLY1",
+            "name": "Solo",
+            "applianceType": "0xC3",
+            "online": 1,
+            "owner": True,
+            "sn": "S",
+            "sn8": "S",
+        }
+    ]
+    resp = client.get("/")
+    assert resp.status_code == 302
+    assert "/device/ONLY1" in resp.headers["Location"]
+
+
+def test_appliances_empty_list_renders_message(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.return_value = []
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"no appliances" in resp.data.lower()

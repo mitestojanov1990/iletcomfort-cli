@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Appliances — iLetComfort{% endblock %}
+{% block content %}
+  <h1>Appliances</h1>
+  {% if appliances %}
+    <ul>
+      {% for a in appliances %}
+        <li>
+          <a href="{{ url_for('device', code=a.applianceCode) }}">
+            <strong>{{ a.name }}</strong>
+          </a>
+          <span class="muted">— {{ a.applianceCode }} ({{ "online" if a.online else "offline" }})</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">No appliances on this account.</p>
+  {% endif %}
+{% endblock %}

@@ -134,10 +134,18 @@ def create_app(config: Config, client) -> Flask:
     @app.route("/")
     @require_auth
     def appliances():
-        # Real implementation lands in Task 4. Placeholder kept minimal so
-        # auth-gate tests can verify the redirect behaviour without rendering
-        # appliance data.
-        return "appliances placeholder"
+        try:
+            items = client.list_appliances()
+        except Exception as e:
+            return render_template("appliances.html", appliances=[], error=str(e))
+        if len(items) == 1:
+            return redirect(url_for("device", code=items[0]["applianceCode"]))
+        return render_template("appliances.html", appliances=items, error=None)
+
+    @app.route("/device/<code>")
+    @require_auth
+    def device(code):
+        return f"device {code} placeholder"
 
     return app
 
