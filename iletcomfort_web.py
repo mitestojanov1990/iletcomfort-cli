@@ -239,3 +239,43 @@ def create_app(config: Config, client) -> Flask:
         )
 
     return app
+
+
+def _build_runtime_client(config: Config):
+    from iletcomfort_client import ILetComfortClient
+
+    cl = ILetComfortClient(api_base=config.iletcomfort_api_base)
+    cl.load_token()
+    return cl
+
+
+def main() -> None:
+    import os
+    import sys
+
+    home_env = Path.home() / ".iletcomfort_web.env"
+    secret_path = Path.home() / ".iletcomfort_web_secret"
+
+    try:
+        config = Config.from_env(
+            env=dict(os.environ),
+            env_file=home_env if home_env.exists() else None,
+            secret_key_path=secret_path,
+        )
+    except ConfigError as e:
+        print(f"Config error: {e}", file=sys.stderr)
+        print(
+            "Set the missing variables either in your shell or in "
+            f"{home_env} (one KEY=value per line).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    client = _build_runtime_client(config)
+    app = create_app(config, client)
+    print(f"Serving on http://{config.webui_host}:{config.webui_port}")
+    app.run(host=config.webui_host, port=config.webui_port, debug=False)
+
+
+if __name__ == "__main__":
+    main()
