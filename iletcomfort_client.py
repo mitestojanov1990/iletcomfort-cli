@@ -490,6 +490,24 @@ class ITSStatus:
     comp_total_run_hours: int = 0 # 16-bit BE
     fan_total_run_hours: int = 0  # 16-bit BE
 
+    # ITS short-frame firmware variant. Populated only when the device returns a
+    # 36-byte status frame (length byte 0x23). The spec-mapped fields above are
+    # left at their defaults in that case -- ignore them and read the variant
+    # fields below. Reverse-engineered against an EU ITS unit; bits 1/3/4/7 of
+    # live_ops_raw are unidentified.
+    firmware_variant: str = "spec"
+    live_ops_raw: int | None = None      # body[d+0]: bitfield of currently-running ops
+    live_heat: bool = False              # live_ops bit 0: space heating active
+    live_dhw: bool = False               # live_ops bit 2: DHW heating active
+    live_tbh: bool = False               # live_ops bit 5: TBH (booster heater) active
+    live_fast_dhw: bool = False          # live_ops bit 6: Fast DHW boost active
+    zone1_mode_raw: int | None = None    # body[d+3]: 2=Cool, 3=Heat
+    zone1_mode: str | None = None
+    zone1_setpoint: int | None = None    # body[d+5], direct C
+    zone1_room_temp: int | None = None   # body[d+6], direct C (probable)
+    dhw_setpoint_v: int | None = None    # body[d+7], direct C
+    water_outlet_temp: int | None = None # body[d+21], direct C (probable)
+
     # Raw body for further analysis
     raw_body: bytes = field(default_factory=bytes, repr=False)
 
@@ -505,6 +523,12 @@ def decode_its_status(body: bytearray) -> ITSStatus:
     d = 1  # data_offset: skip body_type byte
 
     body_len = len(body)
+
+    # ITS short-frame firmware variant: 36-byte frame -> ~25-byte body.
+    # Layout differs from the spec; dispatch to a separate decoder.
+    if body_len < 30:
+        return _decode_its_status_short(body, status, d)
+
     if body_len < d + 5:
         return status
 
@@ -602,6 +626,50 @@ def decode_its_status(body: bytearray) -> ITSStatus:
     return status
 
 
+def _decode_its_status_short(
+    body: bytearray, status: ITSStatus, d: int
+) -> ITSStatus:
+    """Decode the 25-byte status body returned by the ITS short-frame firmware.
+
+    Verified field offsets (body indices, with d=1):
+      d+0  = live operations bitfield (Heat / DHW / TBH / Fast DHW)
+      d+3  = zone1 user-set mode (2=Cool, 3=Heat)
+      d+5  = active zone setpoint, direct C
+      d+6  = zone room temp, direct C (probable)
+      d+7  = DHW setpoint, direct C
+      d+21 = water outlet temp, direct C (probable -- only byte seen tracking
+             live with TBH heating)
+    All other body bytes were constant across 6 captures spanning Heat/DHW/TBH/
+    Fast-DHW/Cool toggles, so they are treated as opaque config.
+    """
+    status.firmware_variant = "its_short"
+    body_len = len(body)
+
+    if body_len > d + 0:
+        b = body[d + 0]
+        status.live_ops_raw = b
+        status.live_heat = bool(b & 0x01)
+        status.live_dhw = bool(b & 0x04)
+        status.live_tbh = bool(b & 0x20)
+        status.live_fast_dhw = bool(b & 0x40)
+
+    if body_len > d + 3:
+        m = body[d + 3]
+        status.zone1_mode_raw = m
+        status.zone1_mode = {2: "Cool", 3: "Heat"}.get(m, f"Unknown({m})")
+
+    if body_len > d + 5:
+        status.zone1_setpoint = body[d + 5]
+    if body_len > d + 6:
+        status.zone1_room_temp = body[d + 6]
+    if body_len > d + 7:
+        status.dhw_setpoint_v = body[d + 7]
+    if body_len > d + 21:
+        status.water_outlet_temp = body[d + 21]
+
+    return status
+
+
 # ---------------------------------------------------------------------------
 # ITS protocol response decoding -- subtype 0x02 (Sensors & Extended)
 # ---------------------------------------------------------------------------
@@ -664,6 +732,11 @@ class ITSSensors:
     ahs_total_run_hours: int = 0
     hpc_value: int = 0
 
+    # Set to "its_short" when the device returns a short sensor frame whose
+    # layout has not been reverse-engineered. In that case all decoded fields
+    # above are unreliable; consult raw_body instead.
+    firmware_variant: str = "spec"
+
     # Raw body for further analysis
     raw_body: bytes = field(default_factory=bytes, repr=False)
 
@@ -679,6 +752,14 @@ def decode_its_sensors(body: bytearray) -> ITSSensors:
     d = 1  # data_offset: skip body_type byte
 
     body_len = len(body)
+
+    # ITS short-frame firmware variant: ~38-byte body vs the spec's 49.
+    # Layout has not been mapped, so don't pretend to decode -- caller will
+    # display raw bytes instead.
+    if body_len < 45:
+        sensors.firmware_variant = "its_short"
+        return sensors
+
     if body_len < d + 1:
         return sensors
 
@@ -1256,6 +1337,10 @@ class ApiError(Exception):
 
 def print_its_status(status: ITSStatus) -> None:
     """Print an ITSStatus in a human-readable format."""
+    if status.firmware_variant == "its_short":
+        _print_its_status_short(status)
+        return
+
     print("\n" + "=" * 60)
     print("  ITS HEAT PUMP -- STATUS & CONTROL (subtype 0x01)")
     print("=" * 60)
@@ -1330,8 +1415,63 @@ def print_its_status(status: ITSStatus) -> None:
     print()
 
 
+def _print_its_status_short(status: ITSStatus) -> None:
+    """Print the short-frame variant of ITS status."""
+    print("\n" + "=" * 60)
+    print("  ITS HEAT PUMP -- STATUS  (firmware: ITS short-frame variant)")
+    print("=" * 60)
+
+    print("\n  Active Operations  (live -- what the unit is doing right now):")
+    print(f"    Space Heating:    {'ON' if status.live_heat else 'off'}")
+    print(f"    DHW Heating:      {'ON' if status.live_dhw else 'off'}")
+    print(f"    TBH Booster:      {'ON' if status.live_tbh else 'off'}")
+    print(f"    Fast DHW Boost:   {'ON' if status.live_fast_dhw else 'off'}")
+    if status.live_ops_raw is not None:
+        unidentified = status.live_ops_raw & ~0x65
+        suffix = (
+            f"  -- unidentified bits: 0x{unidentified:02x}"
+            if unidentified
+            else ""
+        )
+        print(f"    raw bitfield:     0x{status.live_ops_raw:02x}{suffix}")
+
+    print("\n  Zone 1:")
+    print(f"    Mode:             {status.zone1_mode or '?'}")
+    if status.zone1_setpoint is not None:
+        print(f"    Setpoint:         {status.zone1_setpoint} C")
+    if status.zone1_room_temp is not None:
+        print(f"    Room Temp:        {status.zone1_room_temp} C   (probable)")
+
+    print("\n  DHW:")
+    if status.dhw_setpoint_v is not None:
+        print(f"    Setpoint:         {status.dhw_setpoint_v} C")
+
+    print("\n  Water Circuit:")
+    if status.water_outlet_temp is not None:
+        print(f"    Outlet Temp:      {status.water_outlet_temp} C   (probable)")
+
+    print("\n  Raw body  (verified bytes only -- rest are opaque config):")
+    hex_str = " ".join(f"{b:02x}" for b in status.raw_body)
+    print(f"    {hex_str}")
+    print()
+
+
 def print_its_sensors(sensors: ITSSensors) -> None:
     """Print ITSSensors in a human-readable format."""
+    if sensors.firmware_variant == "its_short":
+        print("\n" + "=" * 60)
+        print("  ITS HEAT PUMP -- SENSORS  (decode unavailable for this firmware)")
+        print("=" * 60)
+        print(
+            "\n  This firmware returns a short sensor frame whose layout has\n"
+            "  not been reverse-engineered yet. Most of the bytes are zero\n"
+            "  while the unit is idle. Raw body for further analysis:\n"
+        )
+        hex_str = " ".join(f"{b:02x}" for b in sensors.raw_body)
+        print(f"    {hex_str}")
+        print()
+        return
+
     print("\n" + "=" * 60)
     print("  ITS HEAT PUMP -- SENSOR READINGS (subtype 0x02)")
     print("=" * 60)
