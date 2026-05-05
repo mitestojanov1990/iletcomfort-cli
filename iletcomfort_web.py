@@ -34,12 +34,12 @@ class Config:
         merged: dict[str, str] = {}
         if env_file is not None and env_file.exists():
             merged.update(_parse_env_file(env_file))
-        merged.update({k: v for k, v in env.items() if v != ""})
+        merged.update({k: v for k, v in env.items() if v.strip() != ""})
 
         missing = [
             k
             for k in ("ILETCOMFORT_ACCOUNT", "ILETCOMFORT_PASSWORD", "WEBUI_PASSWORD")
-            if not merged.get(k)
+            if not merged.get(k, "").strip()
         ]
         if missing:
             raise ConfigError(
@@ -49,12 +49,18 @@ class Config:
         secret_key = merged.get("WEBUI_SECRET_KEY", "")
         if not secret_key and secret_key_path is not None:
             if secret_key_path.exists():
-                secret_key = secret_key_path.read_text().strip()
-            else:
-                secret_key = secrets.token_hex(32)
-                secret_key_path.write_text(secret_key)
                 try:
-                    secret_key_path.chmod(0o600)
+                    secret_key = secret_key_path.read_text().strip()
+                except OSError:
+                    pass
+            if not secret_key:
+                secret_key = secrets.token_hex(32)
+                try:
+                    secret_key_path.write_text(secret_key)
+                    try:
+                        secret_key_path.chmod(0o600)
+                    except OSError:
+                        pass
                 except OSError:
                     pass
         if not secret_key:

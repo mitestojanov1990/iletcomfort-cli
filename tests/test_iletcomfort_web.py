@@ -79,7 +79,7 @@ def test_config_autogenerates_secret_key(tmp_path, import_web_module):
         env_file=None,
         secret_key_path=secret_path,
     )
-    assert len(cfg.webui_secret_key) >= 32
+    assert len(cfg.webui_secret_key) == 64  # secrets.token_hex(32) -> 64 hex chars
     assert secret_path.exists()
     assert secret_path.read_text().strip() == cfg.webui_secret_key
 
@@ -112,3 +112,49 @@ def test_config_port_parsed_as_int(import_web_module):
         secret_key_path=None,
     )
     assert cfg.webui_port == 9001
+
+
+def test_config_whitespace_only_env_var_is_treated_as_missing(import_web_module):
+    with pytest.raises(import_web_module.ConfigError) as ei:
+        import_web_module.Config.from_env(
+            env={
+                "ILETCOMFORT_ACCOUNT": "   ",
+                "ILETCOMFORT_PASSWORD": "pw",
+                "WEBUI_PASSWORD": "wpw",
+                "WEBUI_SECRET_KEY": "k",
+            },
+            env_file=None,
+            secret_key_path=None,
+        )
+    assert "ILETCOMFORT_ACCOUNT" in str(ei.value)
+
+
+def test_config_invalid_port_raises(import_web_module):
+    with pytest.raises(import_web_module.ConfigError) as ei:
+        import_web_module.Config.from_env(
+            env={
+                "ILETCOMFORT_ACCOUNT": "u@example.com",
+                "ILETCOMFORT_PASSWORD": "pw",
+                "WEBUI_PASSWORD": "wpw",
+                "WEBUI_SECRET_KEY": "k",
+                "WEBUI_PORT": "not-a-number",
+            },
+            env_file=None,
+            secret_key_path=None,
+        )
+    assert "WEBUI_PORT" in str(ei.value)
+
+
+def test_config_env_file_skips_lines_without_equals(tmp_path, import_web_module):
+    env_file = tmp_path / ".iletcomfort_web.env"
+    env_file.write_text(
+        "BARE_LINE_NO_EQUALS\n"
+        "ILETCOMFORT_ACCOUNT=u@example.com\n"
+        "ILETCOMFORT_PASSWORD=pw\n"
+        "WEBUI_PASSWORD=wpw\n"
+        "WEBUI_SECRET_KEY=k\n"
+    )
+    cfg = import_web_module.Config.from_env(
+        env={}, env_file=env_file, secret_key_path=None
+    )
+    assert cfg.iletcomfort_account == "u@example.com"
