@@ -7,5 +7,5 @@ import pytest
 @pytest.fixture
 def import_web_module():
     """Imports iletcomfort_web. Forces ImportError to surface in test, not collection."""
-    import iletcomfort_web  # noqa: F401
+    import iletcomfort_web
     return iletcomfort_web
