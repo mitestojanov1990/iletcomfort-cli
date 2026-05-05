@@ -115,9 +115,6 @@ def create_app(config: Config, client) -> Flask:
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-    app.extensions["iletcomfort_config"] = config
-    app.extensions["iletcomfort_client"] = client
-
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if request.method == "POST":
