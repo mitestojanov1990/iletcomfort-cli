@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Login — iLetComfort{% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+  <h1>iLetComfort</h1>
+  <form method="post">
+    <label>Password
+      <input type="password" name="password" autofocus required>
+    </label>
+    <button type="submit" class="btn">Sign in</button>
+  </form>
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+{% endblock %}

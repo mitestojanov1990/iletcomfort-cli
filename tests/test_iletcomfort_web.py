@@ -158,3 +158,39 @@ def test_config_env_file_skips_lines_without_equals(tmp_path, import_web_module)
         env={}, env_file=env_file, secret_key_path=None
     )
     assert cfg.iletcomfort_account == "u@example.com"
+
+
+def test_login_get_renders_form(client):
+    resp = client.get("/login")
+    assert resp.status_code == 200
+    assert b"password" in resp.data.lower()
+
+
+def test_login_post_wrong_password_rerenders_with_error(client):
+    resp = client.post("/login", data={"password": "wrong"})
+    assert resp.status_code == 200
+    assert b"wrong password" in resp.data.lower()
+
+
+def test_login_post_correct_password_redirects_and_sets_cookie(client):
+    resp = client.post("/login", data={"password": "secret"})
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/")
+    cookies = resp.headers.getlist("Set-Cookie")
+    assert any("session=" in c for c in cookies)
+
+
+def test_unauthed_root_redirects_to_login(client):
+    resp = client.get("/")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_logout_clears_session(client):
+    client.post("/login", data={"password": "secret"})
+    resp = client.post("/logout")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+    follow = client.get("/")
+    assert follow.status_code == 302
+    assert "/login" in follow.headers["Location"]

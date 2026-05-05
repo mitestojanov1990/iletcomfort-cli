@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}iLetComfort{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    h1, h2, h3 { margin-top: 1.2rem; }
+    section.card { border: 1px solid #ccc; border-radius: 6px; padding: 1rem 1.2rem; margin: 1rem 0; }
+    section.card header { font-weight: 600; margin-bottom: 0.6rem; }
+    .err { color: #b00020; }
+    .muted { color: #666; font-size: 0.9em; }
+    pre, code, .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f5f5f5; padding: 0.6rem; border-radius: 4px; }
+    a.btn, button.btn { display: inline-block; padding: 0.4rem 0.9rem; border-radius: 4px;
+      background: #1a73e8; color: white; text-decoration: none; border: none; cursor: pointer; font-size: 1rem; }
+    a.btn:hover, button.btn:hover { background: #1558b8; }
+    table.kv { border-collapse: collapse; }
+    table.kv td { padding: 0.2rem 0.6rem 0.2rem 0; vertical-align: top; }
+    table.kv td.k { color: #555; font-weight: 500; }
+    nav { margin-bottom: 1rem; }
+    nav a { margin-right: 1rem; }
+  </style>
+</head>
+<body>
+  {% block nav %}
+    {% if session.get("authed") %}
+    <nav>
+      <a href="{{ url_for('appliances') }}">Appliances</a>
+      <form action="{{ url_for('logout') }}" method="post" style="display:inline">
+        <button type="submit" class="btn">Logout</button>
+      </form>
+    </nav>
+    {% endif %}
+  {% endblock %}
+  {% block content %}{% endblock %}
+</body>
+</html>

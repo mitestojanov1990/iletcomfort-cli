@@ -94,3 +94,62 @@ def _parse_env_file(path: Path) -> dict[str, str]:
         key, _, value = line.partition("=")
         out[key.strip()] = value.strip()
     return out
+
+
+import hmac
+from functools import wraps
+
+from flask import (
+    Flask,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+
+
+def create_app(config: Config, client) -> Flask:
+    app = Flask(__name__)
+    app.config["SECRET_KEY"] = config.webui_secret_key
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+    app.extensions["iletcomfort_config"] = config
+    app.extensions["iletcomfort_client"] = client
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if request.method == "POST":
+            submitted = request.form.get("password", "")
+            if hmac.compare_digest(submitted, config.webui_password):
+                session.clear()
+                session["authed"] = True
+                return redirect(url_for("appliances"))
+            return render_template("login.html", error="Wrong password")
+        return render_template("login.html", error=None)
+
+    @app.route("/logout", methods=["POST"])
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
+
+    @app.route("/")
+    @require_auth
+    def appliances():
+        # Real implementation lands in Task 4. Placeholder kept minimal so
+        # auth-gate tests can verify the redirect behaviour without rendering
+        # appliance data.
+        return "appliances placeholder"
+
+    return app
+
+
+def require_auth(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("authed"):
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+
+    return wrapped
