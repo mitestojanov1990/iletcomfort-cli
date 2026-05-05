@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Raw — {{ code }} — iLetComfort{% endblock %}
+{% block content %}
+  <h1>Raw frames — {{ code }}</h1>
+  <p class="muted">
+    <a href="{{ url_for('device', code=code) }}">decoded view</a> —
+    last updated {{ updated }}
+  </p>
+  <p><a class="btn" href="{{ url_for('device_raw', code=code) }}">Refresh</a></p>
+
+  <section class="card">
+    <header>Raw status frame</header>
+    {% if status.error %}
+      <p class="err">{{ status.error }}</p>
+    {% else %}
+      <p>variant: <code>{{ status.value.firmware_variant }}</code></p>
+      <pre>{{ status.value.raw_body.hex(" ") }}</pre>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <header>Raw sensor frame</header>
+    {% if sensors.error %}
+      <p class="err">{{ sensors.error }}</p>
+    {% else %}
+      <p>variant: <code>{{ sensors.value.firmware_variant }}</code></p>
+      <pre>{{ sensors.value.raw_body.hex(" ") }}</pre>
+    {% endif %}
+  </section>
+{% endblock %}

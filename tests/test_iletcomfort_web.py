@@ -386,3 +386,18 @@ def test_device_metadata_failure_does_not_break_status_card(client, mock_client)
     assert resp.status_code == 200
     assert b"network down" in resp.data
     assert b"Zone 1" in resp.data  # status card still rendered
+
+
+def test_device_raw_renders_hex_dump(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.return_value = _appliance("AAA111")
+    mock_client.get_appliance_info.return_value = {"name": "Test"}
+    mock_client.query_status.return_value = _short_status()
+    mock_client.query_sensors.return_value = _short_sensors()
+
+    resp = client.get("/device/AAA111/raw")
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert "01 64 17 90" in body  # status raw bytes (first four)
+    assert "Raw status frame" in body
+    assert "Raw sensor frame" in body

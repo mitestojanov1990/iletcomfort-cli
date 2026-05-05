@@ -220,6 +220,22 @@ def create_app(config: Config, client) -> Flask:
     @app.route("/device/<code>/raw")
     @require_auth
     def device_raw(code):
-        return f"raw {code} placeholder", 200, {"Content-Type": "text/plain"}
+        try:
+            appliances_list = client.list_appliances()
+        except Exception:
+            appliances_list = None
+        if appliances_list is not None and code not in {a["applianceCode"] for a in appliances_list}:
+            abort(404)
+
+        status_obj = _safe_call(_call_with_relogin, client, config, client.query_status, code)
+        sensors_obj = _safe_call(_call_with_relogin, client, config, client.query_sensors, code)
+
+        return render_template(
+            "device_raw.html",
+            code=code,
+            status=status_obj,
+            sensors=sensors_obj,
+            updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        )
 
     return app
