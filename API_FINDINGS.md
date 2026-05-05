@@ -26,6 +26,7 @@
 14. [Key Differences from midea-local](#14-key-differences-from-midea-local)
 15. [Python Client Reference](#15-python-client-reference)
 16. [Open Questions & Future Work](#16-open-questions--future-work)
+17. [ITS Short-Frame Firmware Variant](#17-its-short-frame-firmware-variant)
 
 ---
 
@@ -994,15 +995,16 @@ client.set_device(appliance_code, mode=MODE_OFF)  # power off
 ## 16. Open Questions & Future Work
 
 ### Resolved
-- [x] Query status (subtype 0x01) — WORKING
-- [x] Query sensors (subtype 0x02) — WORKING
-- [x] SET commands (mode, temperature, boost, mute) — IMPLEMENTED
+- [x] Query status (subtype 0x01) — WORKING (spec firmware)
+- [x] Query sensors (subtype 0x02) — WORKING (spec firmware)
+- [x] SET commands (mode, temperature, boost, mute) — IMPLEMENTED (spec firmware only)
 - [x] Temperature encoding scheme — DECODED (raw-35 offset, with direct exceptions)
 - [x] v1 login signing — VERIFIED
 - [x] v2.0 business API signing — VERIFIED
 - [x] Password encryption — DECODED (AES-128-CBC with SHA256 key derivation)
 - [x] Sensor ctrl_flag and mute_level — d+41 is ctrl_flag (0=normal, 1=mute, 2=boost), d+40 is mute_level (0=L1, 1=L2)
 - [x] Active mode setpoint — t5s_def (d+2, offset-encoded) is the active heating/cooling target, NOT set_temperature (d+4, which is DHW tank target)
+- [x] **ITS short-frame firmware variant detected** — see Section 17 below.
 
 ### Open
 - [ ] **v2.1 SDK signing key** — Extract from iOS binary (OEMPlusSDK framework) or Android APK
@@ -1012,3 +1014,60 @@ client.set_device(appliance_code, mode=MODE_OFF)  # power off
 - [ ] **Additional SET features** — Sterilization schedule, vacation mode, DHW boost
 - [ ] **Error code reference** — Map error_code values to human-readable descriptions
 - [ ] **Subtype 0x04 (notify)** — Decode unsolicited push notifications from device
+- [ ] **ITS short-frame SET frame layout** — needs Android-app capture (see `docs/android-capture.md`)
+- [ ] **ITS short-frame sensor frame layout** — partially captured (mostly zeros while idle), unmapped
+
+---
+
+## 17. ITS Short-Frame Firmware Variant
+
+A second firmware variant returns shorter frames than Section 4-7 describe. Detected on an EU unit (SN8 prefix `171H120F`, account region `eu`). The Python client auto-detects this variant by frame length and dispatches to a separate decoder.
+
+### 17.1 Detection
+
+| Query | Spec frame total | Short variant total | Length byte |
+|---|---|---|---|
+| Status (subtype 0x01) | 62 bytes | **36 bytes** | `0x23` instead of `0x3D` |
+| Sensors (subtype 0x02) | 62 bytes | **49 bytes** | `0x30` instead of `0x3E` |
+
+### 17.2 Status Frame Layout (Subtype 0x01) — Verified Bytes
+
+Body indices, with `d = 1` (skip subtype byte). Spec field positions do NOT apply.
+
+| Body offset | Frame index | Field | Encoding |
+|---|---|---|---|
+| `d+0` | `[11]` | **Live operations bitfield** | bit 0=Heat zone active, bit 2=DHW heating active, bit 3=unknown (set by SET), bit 4=unknown (persistent after SET), bit 5=TBH booster, bit 6=Fast DHW |
+| `d+1` | `[12]` | Device-identity constant | always `0x17` on this firmware |
+| `d+3` | `[14]` | Zone1 user-set mode | direct enum: `2` = Cool, `3` = Heat |
+| `d+4` | `[15]` | Mirror of `[14]` | same values observed |
+| `d+5` | `[16]` | Active zone setpoint | direct °C (not `raw - 35`) |
+| `d+6` | `[17]` | Zone room temp (probable) | direct °C |
+| `d+7` | `[18]` | DHW setpoint | direct °C; firmware accepts values < 20 even though app UI clamps display |
+| `d+21` | `[32]` | Live water-circuit temp (probable: outlet) | direct °C; only byte that ticked while TBH was running |
+| `[24] = 0x37` | — | Capability/feature bitmap | constant; **NOT** `comp_running`/`ibh_running`/`sterilize_running` despite the spec's name for that position |
+
+All other body bytes were observed to be constant across 6+ captures across Heat / Cool / DHW / TBH / Fast-DHW state changes; treat them as opaque config until further evidence.
+
+### 17.3 Sensor Frame Layout (Subtype 0x02)
+
+**Not yet decoded.** The frame is 49 bytes (vs spec's 62). While idle, almost every byte is `0x00` with a recurring `03,23` pattern at regular intervals — looks structured but unmapped. Notably, water temperatures appear in the **status** frame on this firmware, not the sensor frame (backwards from spec). Decoder skips this variant; the CLI prints raw bytes with a "decode unavailable" notice.
+
+### 17.4 SET Command — Partial / Unsafe
+
+Sending the spec's 62-byte SET frame to this firmware returns `code=1214 System error` cleanly with no state change.
+
+Sending a 36-byte SET frame (status frame mirrored with `msg_type` flipped from `0x03` → `0x02` and checksum recomputed) **is accepted by the device** and applies state changes — but:
+
+- The byte-position semantics in SET differ from STATUS. Echoing the device's own reported status back as a SET *will* mutate state in unexpected ways.
+- One verified SET-frame mapping: **`SET-frame[15] = DHW setpoint, direct °C`**. The firmware writes whatever value is sent here to the DHW setpoint, including values below the app UI's minimum (e.g. `0x02` → DHW target = 2°C, even though the app refuses to display below 20).
+- Sending SET frames also triggered persistent activation of `live_ops` bits 3, 4, and 5 (Curve, TBH, and one unidentified subsystem). At least one of these (bit 4) **does not reset via the app** — it required a power cycle (or has not been cleared yet).
+- The full SET-frame layout (size, mode-byte position, mode-code mapping, which echo bytes are validated, which bytes encode each toggle) is **unknown** without ground-truth capture from a working client.
+
+**Operationally:** the Python client refuses no SET commands, but on this firmware the existing `set` subcommand sends spec-shaped frames that get rejected (harmless). Building short-variant SET frames manually via `raw` is **unsafe** — see `docs/android-capture.md` for how to obtain ground truth before further SET work.
+
+### 17.5 Findings With High Confidence
+
+- Device validates SET envelope (length + checksum + msg_type). Malformed → `1214`, no state change.
+- Protocol-level DHW setpoint is unconstrained; clamping is purely UI.
+- Position-mirroring SET ("send status hex back with msg_type=0x02") is **not** a no-op — bytes get reinterpreted as control inputs.
+- Some bits in the live_ops byte are persistent across app-side resets and require a hardware power cycle (or specific menu paths not yet identified) to clear.
