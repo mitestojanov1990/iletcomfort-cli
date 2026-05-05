@@ -56,3 +56,42 @@ A custom component is available at [ha-iletcomfort](https://github.com/tgenov/ha
 ## Documentation
 
 See [API_FINDINGS.md](API_FINDINGS.md) for the full protocol reference.
+
+## Web UI
+
+A small Flask dashboard is available for read-only browsing of all data the
+CLI exposes. It shares the CLI's cached token to minimize the
+single-active-session conflict with the iOS app.
+
+### Setup
+
+```bash
+pip install -r requirements.txt
+```
+
+Set credentials either as environment variables or in `~/.iletcomfort_web.env`
+(one `KEY=value` per line):
+
+```
+ILETCOMFORT_ACCOUNT=user@example.com
+ILETCOMFORT_PASSWORD=your-iletcomfort-password
+ILETCOMFORT_API_BASE=https://eu.dollin.net   # or https://us.dollin.net (default)
+WEBUI_PASSWORD=password-for-the-web-form
+```
+
+A session-cookie signing key (`WEBUI_SECRET_KEY`) is auto-generated and
+persisted to `~/.iletcomfort_web_secret` on first run. To override the bind
+address, set `WEBUI_HOST` (default `127.0.0.1`) and `WEBUI_PORT` (default
+`8000`).
+
+### Run
+
+```bash
+.venv/bin/python iletcomfort_web.py
+```
+
+Then open `http://127.0.0.1:8000/`.
+
+The UI is on-demand — the Refresh button is the only way new data is
+fetched. No auto-polling. **Do not expose to the internet without TLS:** the
+web password is sent in plaintext on each login.
