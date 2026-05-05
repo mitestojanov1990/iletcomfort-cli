@@ -97,16 +97,58 @@ def _parse_env_file(path: Path) -> dict[str, str]:
 
 
 import hmac
+from datetime import datetime
 from functools import wraps
 
 from flask import (
     Flask,
+    abort,
     redirect,
     render_template,
     request,
     session,
     url_for,
 )
+
+
+def _is_auth_error(exc: Exception) -> bool:
+    s = str(exc)
+    return "14005" in s or "expired or invalid" in s
+
+
+def _call_with_relogin(client, config: Config, fn, *args, **kwargs):
+    """Call fn(...). On auth error, re-login once and retry exactly once."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:
+        if not _is_auth_error(e):
+            raise
+        client.login(account=config.iletcomfort_account, password=config.iletcomfort_password)
+        try:
+            client.save_token()
+        except Exception:
+            pass
+        return fn(*args, **kwargs)
+
+
+def _safe_call(retrying_caller, client, config: Config, fn, *args, **kwargs):
+    """Run retrying_caller; return {'value': result, 'error': None} or
+    {'value': None, 'error': str(exc)} on failure. Never raises."""
+    try:
+        result = retrying_caller(client, config, fn, *args, **kwargs)
+        return {"value": result, "error": None}
+    except Exception as e:
+        return {"value": None, "error": str(e)}
+
+
+def require_auth(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("authed"):
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+
+    return wrapped
 
 
 def create_app(config: Config, client) -> Flask:
@@ -145,16 +187,43 @@ def create_app(config: Config, client) -> Flask:
     @app.route("/device/<code>")
     @require_auth
     def device(code):
-        return f"device {code} placeholder"
+        try:
+            appliances_list = client.list_appliances()
+        except Exception as e:
+            appliances_list = None
+            list_error = str(e)
+        else:
+            list_error = None
+
+        if appliances_list is not None:
+            known = {a["applianceCode"] for a in appliances_list}
+            if code not in known:
+                abort(404)
+
+        metadata = _safe_call(_call_with_relogin, client, config, client.get_appliance_info, code)
+        status_obj = _safe_call(_call_with_relogin, client, config, client.query_status, code)
+        sensors_obj = _safe_call(_call_with_relogin, client, config, client.query_sensors, code)
+
+        meta_rows: list[tuple[str, object]] = []
+        if metadata["value"] is not None:
+            for k in ("name", "sn", "sn8", "modelNumber", "online", "owner"):
+                if k in metadata["value"]:
+                    meta_rows.append((k, metadata["value"][k]))
+
+        return render_template(
+            "device.html",
+            code=code,
+            name=(metadata["value"] or {}).get("name") if metadata["value"] else None,
+            metadata={"rows": meta_rows, "error": metadata["error"]},
+            status=status_obj,
+            sensors=sensors_obj,
+            updated=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            list_error=list_error,
+        )
+
+    @app.route("/device/<code>/raw")
+    @require_auth
+    def device_raw(code):
+        return f"raw {code} placeholder"
 
     return app
-
-
-def require_auth(view):
-    @wraps(view)
-    def wrapped(*args, **kwargs):
-        if not session.get("authed"):
-            return redirect(url_for("login"))
-        return view(*args, **kwargs)
-
-    return wrapped

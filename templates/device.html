@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ name or code }} — iLetComfort{% endblock %}
+{% block content %}
+  <h1>{{ name or code }}</h1>
+  <p class="muted">
+    {{ code }} —
+    <a href="{{ url_for('appliances') }}">all appliances</a> —
+    <a href="{{ url_for('device_raw', code=code) }}">raw view</a> —
+    last updated {{ updated }}
+  </p>
+  <p><a class="btn" href="{{ url_for('device', code=code) }}">Refresh</a></p>
+
+  <section class="card">
+    <header>Metadata</header>
+    {% if metadata.error %}
+      <p class="err">Could not load metadata: {{ metadata.error }}</p>
+    {% else %}
+      <table class="kv">
+        {% for k, v in metadata.rows %}
+          <tr><td class="k">{{ k }}</td><td>{{ v }}</td></tr>
+        {% endfor %}
+      </table>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <header>Status</header>
+    {% if status.error %}
+      <p class="err">Could not load status: {{ status.error }}</p>
+    {% elif status.value.firmware_variant == "its_short" %}
+      {% set s = status.value %}
+      <h3>Active operations</h3>
+      <table class="kv">
+        <tr><td class="k">Space heating</td><td>{{ "ON" if s.live_heat else "off" }}</td></tr>
+        <tr><td class="k">DHW</td><td>{{ "ON" if s.live_dhw else "off" }}</td></tr>
+        <tr><td class="k">TBH</td><td>{{ "ON" if s.live_tbh else "off" }}</td></tr>
+        <tr><td class="k">Fast DHW</td><td>{{ "ON" if s.live_fast_dhw else "off" }}</td></tr>
+        <tr><td class="k">raw bitfield</td><td class="mono">0x{{ "%02x"|format(s.live_ops_raw or 0) }}</td></tr>
+      </table>
+      <h3>Zone 1</h3>
+      <table class="kv">
+        <tr><td class="k">Mode</td><td>{{ s.zone1_mode or "?" }}</td></tr>
+        <tr><td class="k">Setpoint</td><td>{{ s.zone1_setpoint }} C</td></tr>
+        <tr><td class="k">Room temp</td><td>{{ s.zone1_room_temp }} C <span class="muted">(probable)</span></td></tr>
+      </table>
+      <h3>DHW</h3>
+      <table class="kv">
+        <tr><td class="k">Setpoint</td><td>{{ s.dhw_setpoint_v }} C</td></tr>
+      </table>
+      <h3>Water circuit</h3>
+      <table class="kv">
+        <tr><td class="k">Outlet temp</td><td>{{ s.water_outlet_temp }} C <span class="muted">(probable)</span></td></tr>
+      </table>
+      <p class="muted">Raw body:</p>
+      <pre>{{ status.value.raw_body.hex(" ") }}</pre>
+    {% else %}
+      {% set s = status.value %}
+      <p>Mode: {{ s.mode_name }} ({{ s.mode }})</p>
+      <p>DHW target: {{ s.set_temperature }} C</p>
+      <p class="muted">Raw body:</p>
+      <pre>{{ s.raw_body.hex(" ") }}</pre>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <header>Sensors</header>
+    {% if sensors.error %}
+      <p class="err">Could not load sensors: {{ sensors.error }}</p>
+    {% elif sensors.value.firmware_variant == "its_short" %}
+      <p>Decode unavailable for this firmware variant. Raw body:</p>
+      <pre>{{ sensors.value.raw_body.hex(" ") }}</pre>
+    {% else %}
+      {% set sv = sensors.value %}
+      <table class="kv">
+        <tr><td class="k">Tf</td><td>{{ sv.tf_temp }} C</td></tr>
+        <tr><td class="k">Tp</td><td>{{ sv.tp_temp }} C</td></tr>
+        <tr><td class="k">Th (DHW tank)</td><td>{{ sv.th_temp }} C</td></tr>
+        <tr><td class="k">Outdoor ambient</td><td>{{ sv.t4_temp }}</td></tr>
+        <tr><td class="k">Water inlet</td><td>{{ sv.twin_temp }}</td></tr>
+        <tr><td class="k">Water outlet</td><td>{{ sv.twout_temp }}</td></tr>
+      </table>
+      <p class="muted">Raw body:</p>
+      <pre>{{ sv.raw_body.hex(" ") }}</pre>
+    {% endif %}
+  </section>
+{% endblock %}

@@ -255,3 +255,137 @@ def test_appliances_empty_list_renders_message(client, mock_client):
     resp = client.get("/")
     assert resp.status_code == 200
     assert b"no appliances" in resp.data.lower()
+
+
+from unittest.mock import call
+
+
+def _short_status():
+    from iletcomfort_client import ITSStatus
+
+    s = ITSStatus()
+    s.firmware_variant = "its_short"
+    s.live_ops_raw = 0x64
+    s.live_heat = False
+    s.live_dhw = True
+    s.live_tbh = True
+    s.live_fast_dhw = True
+    s.zone1_mode = "Heat"
+    s.zone1_setpoint = 35
+    s.zone1_room_temp = 30
+    s.dhw_setpoint_v = 45
+    s.water_outlet_temp = 31
+    s.raw_body = bytes(
+        [0x01, 0x64, 0x17, 0x90, 0x03, 0x03, 0x23, 0x1E, 0x2D, 0x30,
+         0x41, 0x23, 0x19, 0x05, 0x37, 0x19, 0x19, 0x05, 0x3C, 0x22,
+         0x3C, 0x14, 0x1F, 0x00, 0x80]
+    )
+    return s
+
+
+def _short_sensors():
+    from iletcomfort_client import ITSSensors
+
+    s = ITSSensors()
+    s.firmware_variant = "its_short"
+    s.raw_body = bytes(range(38))
+    return s
+
+
+def _appliance(code="AAA111"):
+    return [{
+        "applianceCode": code,
+        "name": "Test Pump",
+        "applianceType": "0xC3",
+        "online": 1,
+        "owner": True,
+        "sn": "SN-T",
+        "sn8": "171H120F",
+    }]
+
+
+def test_device_renders_short_variant_status(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.return_value = _appliance("AAA111")
+    mock_client.get_appliance_info.return_value = {"name": "Test Pump", "sn": "SN-T"}
+    mock_client.query_status.return_value = _short_status()
+    mock_client.query_sensors.return_value = _short_sensors()
+
+    resp = client.get("/device/AAA111")
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert "Test Pump" in body
+    assert "DHW" in body
+    assert "TBH" in body
+    assert "Fast DHW" in body
+    assert "35" in body  # zone setpoint
+    assert "45" in body  # DHW setpoint
+    assert "decode unavailable" in body.lower()  # short-variant sensors
+
+
+def test_device_unknown_code_returns_404(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.return_value = _appliance("AAA111")
+    resp = client.get("/device/NOSUCH")
+    assert resp.status_code == 404
+
+
+def test_device_auth_error_triggers_one_relogin(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.return_value = _appliance("AAA111")
+    mock_client.get_appliance_info.return_value = {"name": "Test"}
+
+    auth_err = Exception("Access token expired or invalid. ...")
+    mock_client.query_status.side_effect = [auth_err, _short_status()]
+    mock_client.query_sensors.return_value = _short_sensors()
+
+    resp = client.get("/device/AAA111")
+    assert resp.status_code == 200
+    assert mock_client.login.call_count == 1
+    mock_client.login.assert_called_with(
+        account="user@example.com", password="pw"
+    )
+    assert mock_client.query_status.call_count == 2  # original + retry
+
+
+def test_device_auth_error_relogin_then_failure_renders_inline_error(
+    client, mock_client
+):
+    _login(client)
+    mock_client.list_appliances.return_value = _appliance("AAA111")
+    mock_client.get_appliance_info.return_value = {"name": "Test"}
+
+    auth_err = Exception("code=14005")
+    mock_client.query_status.side_effect = [auth_err, auth_err]
+    mock_client.query_sensors.return_value = _short_sensors()
+
+    resp = client.get("/device/AAA111")
+    assert resp.status_code == 200
+    assert b"14005" in resp.data or b"could not load status" in resp.data.lower()
+
+
+def test_device_transient_1214_renders_inline_error(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.return_value = _appliance("AAA111")
+    mock_client.get_appliance_info.return_value = {"name": "Test"}
+    mock_client.query_status.side_effect = Exception("code=1214, msg=System error")
+    mock_client.query_sensors.return_value = _short_sensors()
+
+    resp = client.get("/device/AAA111")
+    assert resp.status_code == 200
+    assert b"1214" in resp.data or b"temporarily unreachable" in resp.data.lower()
+    # query_status was tried exactly once -- 1214 must not retry.
+    assert mock_client.query_status.call_count == 1
+
+
+def test_device_metadata_failure_does_not_break_status_card(client, mock_client):
+    _login(client)
+    mock_client.list_appliances.return_value = _appliance("AAA111")
+    mock_client.get_appliance_info.side_effect = Exception("network down")
+    mock_client.query_status.return_value = _short_status()
+    mock_client.query_sensors.return_value = _short_sensors()
+
+    resp = client.get("/device/AAA111")
+    assert resp.status_code == 200
+    assert b"network down" in resp.data
+    assert b"Zone 1" in resp.data  # status card still rendered
