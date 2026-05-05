@@ -1,6 +1,114 @@
 """Tests for iletcomfort_web."""
 from __future__ import annotations
 
+import pytest
+
 
 def test_module_imports(import_web_module):
     assert import_web_module is not None
+
+
+def test_config_from_env_happy_path(import_web_module):
+    cfg = import_web_module.Config.from_env(
+        env={
+            "ILETCOMFORT_ACCOUNT": "user@example.com",
+            "ILETCOMFORT_PASSWORD": "pw",
+            "WEBUI_PASSWORD": "secret",
+            "WEBUI_SECRET_KEY": "abc",
+        },
+        env_file=None,
+        secret_key_path=None,
+    )
+    assert cfg.iletcomfort_account == "user@example.com"
+    assert cfg.iletcomfort_password == "pw"
+    assert cfg.webui_password == "secret"
+    assert cfg.webui_secret_key == "abc"
+    assert cfg.iletcomfort_api_base == "https://us.dollin.net"
+    assert cfg.webui_host == "127.0.0.1"
+    assert cfg.webui_port == 8000
+
+
+def test_config_missing_required_raises(import_web_module):
+    with pytest.raises(import_web_module.ConfigError) as ei:
+        import_web_module.Config.from_env(env={}, env_file=None, secret_key_path=None)
+    msg = str(ei.value)
+    assert "ILETCOMFORT_ACCOUNT" in msg
+    assert "ILETCOMFORT_PASSWORD" in msg
+    assert "WEBUI_PASSWORD" in msg
+
+
+def test_config_env_file_supplements_env(tmp_path, import_web_module):
+    env_file = tmp_path / ".iletcomfort_web.env"
+    env_file.write_text(
+        "# comment line\n"
+        "ILETCOMFORT_ACCOUNT=file@example.com\n"
+        "\n"
+        "ILETCOMFORT_PASSWORD = filepw \n"
+        "WEBUI_PASSWORD=wpw\n"
+        "WEBUI_SECRET_KEY=k\n"
+    )
+    cfg = import_web_module.Config.from_env(env={}, env_file=env_file, secret_key_path=None)
+    assert cfg.iletcomfort_account == "file@example.com"
+    assert cfg.iletcomfort_password == "filepw"
+
+
+def test_config_env_overrides_env_file(tmp_path, import_web_module):
+    env_file = tmp_path / ".iletcomfort_web.env"
+    env_file.write_text("ILETCOMFORT_ACCOUNT=file@example.com\n")
+    cfg = import_web_module.Config.from_env(
+        env={
+            "ILETCOMFORT_ACCOUNT": "env@example.com",
+            "ILETCOMFORT_PASSWORD": "pw",
+            "WEBUI_PASSWORD": "wpw",
+            "WEBUI_SECRET_KEY": "k",
+        },
+        env_file=env_file,
+        secret_key_path=None,
+    )
+    assert cfg.iletcomfort_account == "env@example.com"
+
+
+def test_config_autogenerates_secret_key(tmp_path, import_web_module):
+    secret_path = tmp_path / "secret"
+    cfg = import_web_module.Config.from_env(
+        env={
+            "ILETCOMFORT_ACCOUNT": "u@example.com",
+            "ILETCOMFORT_PASSWORD": "pw",
+            "WEBUI_PASSWORD": "wpw",
+        },
+        env_file=None,
+        secret_key_path=secret_path,
+    )
+    assert len(cfg.webui_secret_key) >= 32
+    assert secret_path.exists()
+    assert secret_path.read_text().strip() == cfg.webui_secret_key
+
+
+def test_config_reuses_persisted_secret_key(tmp_path, import_web_module):
+    secret_path = tmp_path / "secret"
+    secret_path.write_text("persisted-key-value")
+    cfg = import_web_module.Config.from_env(
+        env={
+            "ILETCOMFORT_ACCOUNT": "u@example.com",
+            "ILETCOMFORT_PASSWORD": "pw",
+            "WEBUI_PASSWORD": "wpw",
+        },
+        env_file=None,
+        secret_key_path=secret_path,
+    )
+    assert cfg.webui_secret_key == "persisted-key-value"
+
+
+def test_config_port_parsed_as_int(import_web_module):
+    cfg = import_web_module.Config.from_env(
+        env={
+            "ILETCOMFORT_ACCOUNT": "u@example.com",
+            "ILETCOMFORT_PASSWORD": "pw",
+            "WEBUI_PASSWORD": "wpw",
+            "WEBUI_SECRET_KEY": "k",
+            "WEBUI_PORT": "9001",
+        },
+        env_file=None,
+        secret_key_path=None,
+    )
+    assert cfg.webui_port == 9001
