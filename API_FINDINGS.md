@@ -534,19 +534,19 @@ d+1..d+10  (reserved)            zeros
 d+11    online_num               byte             Number of outdoor units online
 d+12    odu_mac_type             byte             Outdoor unit MAC type
 d+13    limit_frq_code           byte             Frequency limit code
-d+14    tf_temp                  direct           Refrigerant fluid temperature
-d+15    tp_temp                  direct           Plate heat exchanger temperature
-d+16    th_temp                  direct           DHW tank temperature
+d+14    tf_temp                  direct           Module / inverter temperature (HMI label: "TF MODULE TEMP.")
+d+15    tp_temp                  direct           Compressor DISCHARGE pipe temp (HMI label: "Tp COMP. DISCHARGE TEMP.") — NOT plate exchanger
+d+16    th_temp                  direct           DHW tank temperature (despite the name; the HMI calls the SUCTION pipe "Th", which is a different sensor at d+26)
 d+17    water_pres               byte             Water pressure
 d+18    water_flow               byte             Water flow switch
 d+19    capacity_hp              byte             Heat pump capacity
 d+20    t3_temp                  raw-35           Condenser temperature
 d+21    t4_temp                  raw-35           Outdoor ambient temperature
-d+22    t2_temp                  raw-35           Evaporator temperature
-d+23    t2b_temp                 raw-35           Secondary evaporator temperature
-d+24    twin_temp                raw-35           Water inlet temperature
-d+25    twout_temp               raw-35           Water outlet temperature
-d+26    t1_temp                  raw-35           Suction temperature (204=disconnected)
+d+22    t2_temp                  raw-35           T2 plate refrigerant-out temp (HMI: "T2 PLATE F-OUT TEMP.")
+d+23    t2b_temp                 raw-35           T2B plate refrigerant-in temp (HMI: "T2B PLATE F-IN TEMP.")
+d+24    twin_temp                raw-35           Plate water-inlet temp (HMI: "TW_I PLATE W-INLET TEMP.")
+d+25    twout_temp               raw-35           Plate water-outlet temp (HMI: "TW_O PLATE W-OUTLET TEMP.")
+d+26    t1_temp                  raw-35           T1 leaving water temp (204=disconnected) (HMI: "T1 LEAVING WATER TEMP.")
 d+27    odu_current_hi           }                Outdoor unit current (16-bit BE)
 d+28    odu_current_lo           }
 d+29    odu_voltage              direct           Outdoor unit voltage
