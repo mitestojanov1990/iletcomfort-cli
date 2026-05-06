@@ -1,0 +1,43 @@
+source:
+	/private/var/folders/jj/8svwvczn1_b9_wl5jsqxkm9h0000gn/T/apk-mitm-ecc521e0b28b4849ece4fea5b23e13f1/bundle
+keystore:
+	[0] 161a0018 /private/var/folders/jj/8svwvczn1_b9_wl5jsqxkm9h0000gn/T/temp_2722241479516215302_debug.keystore (DEBUG_EMBEDDED)
+
+01. base.apk
+	WARNING: already signed - will be resigned. Old certificate info: [v2, v3]
+		Subject: Subject: CN=Android Debug, OU=Android, O=US, L=US, ST=US, C=US
+		SHA256: 1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953
+
+	SIGN
+	file: /private/var/folders/jj/8svwvczn1_b9_wl5jsqxkm9h0000gn/T/apk-mitm-ecc521e0b28b4849ece4fea5b23e13f1/bundle/base.apk (16.74 MiB)
+	checksum: 132276ae01acad8a1915ac5167a999d392770ea8a90cdb849c7234053a70e002 (sha256)
+	- sign success
+
+	VERIFY
+	file: /private/var/folders/jj/8svwvczn1_b9_wl5jsqxkm9h0000gn/T/apk-mitm-ecc521e0b28b4849ece4fea5b23e13f1/bundle/base.apk (16.74 MiB)
+	checksum: 692f6c0a65f657bf93cb83fa6856f2eb0f4fe6001fd605fd0d10372d3effd49a (sha256)
+	- signature verified [v2, v3]
+		Subject: CN=Android Debug, OU=Android, O=US, L=US, ST=US, C=US
+		SHA256: 1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953 / SHA256withRSA
+		Expires: Thu Mar 10 21:10:05 CET 2044
+
+02. split_config.arm64_v8a.apk
+	WARNING: already signed - will be resigned. Old certificate info: [v1, v2, v3]
+		Subject: Subject: CN=Android, OU=Android, O=Google Inc., L=Mountain View, ST=California, C=US
+		SHA256: 64a1cc89060fdb7f4d37a938f8140c837219f9bf0b0ac2c5902105632b5ee71d
+
+	SIGN
+	file: /private/var/folders/jj/8svwvczn1_b9_wl5jsqxkm9h0000gn/T/apk-mitm-ecc521e0b28b4849ece4fea5b23e13f1/bundle/split_config.arm64_v8a.apk (16.49 MiB)
+	checksum: 4b276d95d3fd1f0cb845cb77a4d709c70a3f08a87a860899be9f0c8700b9ec50 (sha256)
+	- sign success
+
+	VERIFY
+	file: /private/var/folders/jj/8svwvczn1_b9_wl5jsqxkm9h0000gn/T/apk-mitm-ecc521e0b28b4849ece4fea5b23e13f1/bundle/split_config.arm64_v8a.apk (16.48 MiB)
+	checksum: 751780459ed4e74df659516c1269c60792e31ec6abb7514376a12a8cfc55c98d (sha256)
+	- signature verified [v1, v2, v3]
+		Subject: CN=Android Debug, OU=Android, O=US, L=US, ST=US, C=US
+		SHA256: 1e08a903aef9c3a721510b64ec764d01d3d094eb954161b62544ea8f187b5953 / SHA256withRSA
+		Expires: Thu Mar 10 21:10:05 CET 2044
+
+[Wed May 06 00:21:56 CEST 2026][v1.3.0]
+Successfully processed 2 APKs and 0 errors in 4.25 seconds.
