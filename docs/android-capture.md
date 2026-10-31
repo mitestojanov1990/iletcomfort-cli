@@ -1,5 +1,42 @@
 # Capturing iLetComfort SET Commands From the Android App
 
+## Status (2026-10-31)
+
+Progress against this doc, using the real Android app (`com.mbt.iletcomfort`,
+version 1.7.2 — NOT `com.btri.OEMPlus`, which is the iOS bundle ID) pulled
+from the user's own phone over Wi-Fi ADB:
+
+- **Static analysis dead end.** The Android app does not reuse the iOS app's
+  known API secrets (`APP_SECRET`, `CLIENT_SECRET`, `ENCRYPT_KEY`). Its
+  `/v1/appliance/protocol/lua/luaGet` and `/v2/luaEncryption/luaGet` endpoints
+  (which would hand back a per-model protocol script) both 404/405 against
+  this account. No shortcut around a live capture.
+- **mitmproxy against the real phone doesn't work out of the box.** The
+  app's `res/xml/network_security_config.xml` only declares a `base-config`
+  with `cleartextTrafficPermitted` — no `<trust-anchors>` entry for user
+  certificates. Targeting API 36, that means Android refuses any
+  user-installed CA for this app's own traffic
+  (`Trust anchor for certification path not found`), even though the
+  system otherwise trusts the cert fine (confirmed working for other apps).
+- **`apk-mitm` repackaging is NOT safe for this app.** Running
+  `npx apk-mitm` against the base + arm64 split successfully patches and
+  signs (apktool 2.9.3, uber-apk-signer 1.3.0 — this *does* work on Apple
+  Silicon once the `.apks` zip entries are named `base.apk` /
+  `split_config.*.apk`, matching what apk-mitm's extractor expects; naming
+  them anything else silently fails at the "Extracting APKs" step with
+  "Input file ... bundle/base.apk was not found"). **But** the app is
+  multidex, and apktool's decode/rebuild only reconstructs the primary
+  `classes.dex` — the rebuilt `base.apk`'s `classes.dex` shrinks from
+  35.7 MB to ~9.7 KB, meaning almost the entire app's code is dropped.
+  Installing this build would crash on launch. **Do not sideload a build
+  produced this way.**
+
+**Conclusion:** the Android emulator + HTTP Toolkit path this doc already
+describes (Section below) is the correct next step, not a fallback — it
+avoids both problems above, since HTTP Toolkit installs its CA into the
+*system* trust store on an emulator (no app opt-in needed) and nothing
+gets rebuilt, so multidex is a non-issue.
+
 ## Why
 
 The ITS short-frame firmware variant (Section 17 of `API_FINDINGS.md`) accepts SET frames in a layout that does **not** match the spec. Sending guessed SET frames mutates real device state in ways we can't predict — the protocol does not protocol-clamp inputs, and at least one byte position has been observed to silently activate persistent subsystems we can't reset from the app UI.
