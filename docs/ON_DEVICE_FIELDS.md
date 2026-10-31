@@ -203,6 +203,78 @@ candidate byte for this field has been confirmed in either captured frame.
    and `tp_temp` (mislabelled as "plate exchanger" — it is in fact also
    discharge). See `API_FINDINGS.md` §6 for the correction.
 
+## 9. Live Cross-Reference (2026-10-31, active Space+DHW heating + Fast DHW Boost)
+
+Captured via `iletcomfort_client.py --api-base https://eu.dollin.net status` /
+`sensors`, cross-referenced against phone photos of the physical HMI taken
+within the same ~20-minute window (unit actively heating: Space Heating ON,
+DHW Heating ON, Fast DHW Boost ON, Zone 1 = Heat/35°C, DHW target = 45°C).
+
+Two live captures ~20-30 min apart, status body (`d=1` convention, matches
+`API_FINDINGS.md` §17 / `decode_its_status`'s `body[d+N]`):
+
+```
+capture 1: 01 55 17 90 03 03 23 1e 2d 17 41 23 19 05 37 19 19 05 3c 22 3c 14 18 00 80
+capture 2: 01 55 17 90 03 03 23 1e 2d 17 41 23 19 05 37 19 19 05 3c 22 3c 14 35 00 80
+```
+
+Only **one byte** (`d+21`, index 22 in the printed body) differed between the
+two captures: `0x18` (24) → `0x35` (53). Every other byte — including the
+`live_ops` bitfield (`0x55`), zone setpoint, room temp, and DHW setpoint —
+stayed frozen across the ~20-30 min gap even though the compressor was
+running the whole time.
+
+Sensor frame (subtype 0x02) was **byte-identical** across both captures:
+`02 00 03 29 14 1e 14 32 05 28 05 00 0a 00 03 23 00 00 00 00 03 23 00 00 00 00 03 00 00 00 00 00 03 00 00 00 00 00`.
+
+### Findings
+
+1. **Home-screen right-side value is the DHW tank's *actual* temperature, not
+   its setpoint.** The HMI main screen showed `35°C` on the tap-icon side
+   while `d+7` (decoded as `dhw_setpoint_v`) read `0x2d` = 45. These are
+   different things: `d+7` is the DHW **target** (confirmed by the matching
+   `TANK SET TEMP` field from the idle capture in §4, `status[18]=0x2d=45`),
+   and the home screen's live `35` is the tank's **current** temperature —
+   consistent with `DHW Heating: ON` (tank still climbing toward the 45°C
+   target). `OPERATION PARAMETER` page 4/9 confirms this: `T5 WATER TANK
+   TEMP` read `35°C` at the same moment, matching the home screen exactly.
+
+2. **`d+21` (`water_outlet_temp` in the code, "probable") is a genuinely
+   live-updating byte** — it moved from 24→53 while every other status byte
+   stayed constant. However it does **not** match any single HMI value we
+   captured at a comparable moment (`T5`=35, `TW_O`=48, `TW_I`=46 were the
+   closest candidates on page 4/9, captured a few minutes before capture 2's
+   `53`). Given finding #1, `d+21` is most likely a second, independent water
+   temperature reading from a different point than `T5` — a good follow-up
+   test is to capture `status` and photograph page 4/9 or 8/9 within seconds
+   of each other, ideally during a period of large thermal gradient (e.g.
+   right after the compressor starts from cold).
+
+3. **Correction — bit4 (`0x10`) of the `live_ops` bitfield is NOT an active
+   TANK BACKUP HEATER indicator**, despite `OPERATION PARAMETER` page 2/9
+   showing `TANK BACKUP HEATER: ON` during this capture (which would have
+   been a tempting match for the raw `0x55` = `0b01010101`, bits 0/2/4/6).
+   This is ruled out by the **idle-state** capture in §2-§3 above: with the
+   unit fully `OFF` (no heating, no DHW, no TBH, no fast-DHW), `live_ops` was
+   `0x10` — i.e. bit4 was *already set* with everything else off, and
+   `TANK BACKUP HEATER` read `OFF` on the HMI at that time. A bit that is set
+   both when the backup heater is off (idle) and when it's on (this capture)
+   cannot be tracking that heater. Bit4 remains unidentified; it looks like a
+   static capability/config flag baked into this byte position rather than a
+   live run-state bit for this installation.
+
+4. **The rich OPERATION PARAMETER telemetry (pages 3, 6, 7, 8, 9) is
+   confirmed absent from both cloud frames even during active compressor
+   operation.** COMP. CURRENT (8A), COMP. FREQUENCY (29Hz), FAN SPEED
+   (500 R/MIN), SUPPLY VOLTAGE (228V), DC GENERATRIX VOLTAGE/CURRENT
+   (370V/1.10A), T2/T2B/T3/T4/TF temps, P1 PRESSURE (3040kPa), WATER FLOW
+   (2.70 m³/h), POWER CONSUM, and HEAT PUMP CAPACITY were all live and
+   changing on the HMI at capture time, yet neither the 25-byte status body
+   nor the 37-byte sensor body (which didn't change a single byte across the
+   whole window) contain plausible matches for any of them. This reinforces
+   §6 finding #2: this telemetry needs a subtype we haven't found yet (0x10
+   errors out; worth trying a broader subtype sweep, e.g. 0x03-0x0f).
+
 ## 7. Open Questions
 
 - Which exact bit of `status[11]` corresponds to which pump (PUMP_O / _C / _S
